@@ -3,16 +3,7 @@
     "id": "spotify-pomodoro",
     "main": "code.js",
     "ui": "ui.html",
-    "menu": [
-      {
-        "name": "Start Timer",
-        "command": "start-timer"
-      },
-      {
-        "name": "Stop Timer",
-        "command": "stop-timer"
-      }
-    ],
+    "editorType": ["figma", "figjam"],
     "api": "1.0.0" 
   }
   

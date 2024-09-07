@@ -9,25 +9,36 @@
   <h3>Redirecting...</h3>
 
   <script>
-    // Extract access token from URL after Spotify OAuth redirects back
+    // Extract the access token from the URL fragment
     function getAccessTokenFromUrl() {
       const hash = window.location.hash;
       if (!hash) return null;
-      const params = new URLSearchParams(hash.substring(1)); // Remove leading `#`
+      const params = new URLSearchParams(hash.substring(1)); // Remove the `#`
       return params.get('access_token');
     }
 
     const accessToken = getAccessTokenFromUrl();
+    
     if (accessToken) {
       console.log('Access token:', accessToken);
 
-      // Send access token back to the Figma plugin
-      window.opener.postMessage({ type: 'access-token', token: accessToken }, '*');
+      // Handle communication with Figma desktop app
+      if (window.opener && !window.opener.closed) {
+        // Post the access token back to the Figma plugin
+        window.opener.postMessage({ type: 'access-token', token: accessToken }, '*');
+        window.close();  // Close the popup window
+      } else {
+        console.log("window.opener is null or closed, likely running in the desktop app.");
 
-      // Close the popup after sending the token
-      window.close();
+        // Fallback: Show the token and instruct the user to manually copy it
+        document.body.innerHTML = `
+          <h3>Authentication Complete</h3>
+          <p>Access token: ${accessToken}</p>
+          <p>Please copy the token and paste it back into the Figma plugin.</p>
+        `;
+      }
     } else {
-      console.error('No access token found');
+      console.error('No access token found.');
       document.body.innerHTML = "<h3>Error: No access token found</h3>";
     }
   </script>

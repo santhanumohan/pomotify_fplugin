@@ -5,6 +5,7 @@
 </head>
 <body>
   <h2>Spotify Pomodoro Timer</h2>
+  <button id="loginButton">Login with Spotify</button>
 
   <!-- Playlist selection -->
   <label for="playlist">Select Playlist:</label>
@@ -27,7 +28,7 @@
 
   <script>
     const clientId = '7e64237adb114c82963ae879017c050f'; // Replace with your Spotify Client ID
-    const redirectUri = 'https://localhost:3000/callback';   // This should be the URL to `oauth-redirect.html`
+    const redirectUri = 'https://santhanumohan.github.io/pomotify_fplugin/oauth-redirect.html';   // This should be the URL to `oauth-redirect.html`
 
     // Spotify Auth URL
     const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=user-read-private user-read-email user-library-read user-read-playback-state user-modify-playback-state`;
@@ -35,24 +36,33 @@
     // Open Spotify authentication in a new window
     function authenticateSpotify() {
       console.log("Redirecting to Spotify for authentication...");
-      window.open(authUrl, 'SpotifyAuth', 'width=600,height=800');
+
+      // Open OAuth in a popup window
+      const popup = window.open(authUrl, 'SpotifyAuth', 'width=600,height=800');
+
+      // Check if the popup was blocked
+      if (!popup || popup.closed || typeof popup.closed == 'undefined') {
+        alert("Popup blocked! Please enable popups and try again.");
+      }
     }
 
     // Check if there's an access token in the window message
-    window.addEventListener('message', (event) => {
-      if (event.data.type === 'access-token') {
-        const accessToken = event.data.token;
-        console.log('Access Token received:', accessToken);
+      function authenticateSpotify() {
+        console.log("Redirecting to Spotify for authentication...");
 
-        // Pass the access token to the Figma plugin backend (code.js)
-        parent.postMessage({ pluginMessage: { type: 'access-token', token: accessToken } }, '*');
+        // Open the OAuth authentication URL in a new tab/window (external browser)
+        window.open(authUrl, '_blank');  // This will open in the user's default browser
       }
-    });
 
-    // Automatically start the authentication flow when the UI loads
-    window.onload = function () {
+    // Show button after a delay or interaction to ensure the popup is not blocked
+    setTimeout(() => {
+      document.getElementById('loginButton').style.display = 'block';  // Show the button after 2 seconds
+    }, 2000);
+
+    // Trigger OAuth flow when the user clicks the button
+    document.getElementById('loginButton').addEventListener('click', () => {
       authenticateSpotify();
-    };
+    });
 
     // Listen for messages from backend (code.js)
     window.onmessage = (event) => {
