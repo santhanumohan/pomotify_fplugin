@@ -1,30 +1,47 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
-  <title>Spotify Pomodoro</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spotify Pomodoro Plugin</title>
 </head>
+
 <body>
   <h2>Spotify Pomodoro Timer</h2>
+
+  <!-- Button to initiate Spotify login -->
   <button id="loginButton">Login with Spotify</button>
 
+  <!-- Input field to manually paste the access token -->
+  <div id="tokenSection" style="display:none;">
+    <h3>Paste Your Access Token</h3>
+    <input type="text" id="accessTokenInput" placeholder="Paste Spotify Access Token here" style="width: 100%;" />
+    <button id="submitTokenButton">Submit Token</button>
+  </div>
+
   <!-- Playlist selection -->
-  <label for="playlist">Select Playlist:</label>
-  <select id="playlist">
-    <option value="">Loading...</option>
-  </select>
+  <div id="playlistSection" style="display:none;">
+    <label for="playlist">Select Playlist:</label>
+    <select id="playlist">
+      <option value="">Loading...</option>
+    </select>
+  </div>
 
   <!-- Pomodoro Timer settings -->
-  <label for="workDuration">Work Duration (minutes):</label>
-  <input type="number" id="workDuration" value="25" min="5" max="60">
+  <div id="timerSection" style="display:none;">
+    <label for="workDuration">Work Duration (minutes):</label>
+    <input type="number" id="workDuration" value="25" min="5" max="60">
 
-  <label for="breakDuration">Break Duration (minutes):</label>
-  <input type="number" id="breakDuration" value="5" min="1" max="15">
+    <label for="breakDuration">Break Duration (minutes):</label>
+    <input type="number" id="breakDuration" value="5" min="1" max="15">
 
-  <button id="startButton">Start Pomodoro</button>
-  <button id="stopButton">Stop Pomodoro</button>
+    <button id="startButton">Start Pomodoro</button>
+    <button id="stopButton">Stop Pomodoro</button>
 
-  <!-- Counter display -->
-  <h3 id="counter">Time Left: --:--</h3>
+    <!-- Counter display -->
+    <h3 id="counter">Time Left: --:--</h3>
+  </div>
 
   <script>
     const clientId = '7e64237adb114c82963ae879017c050f'; // Replace with your Spotify Client ID
@@ -33,61 +50,78 @@
     // Spotify Auth URL
     const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=user-read-private user-read-email user-library-read user-read-playback-state user-modify-playback-state`;
 
-    // Open Spotify authentication in a new window
+    // Function to authenticate with Spotify by opening a new tab
     function authenticateSpotify() {
       console.log("Redirecting to Spotify for authentication...");
-
-      // Open OAuth in a popup window
-      const popup = window.open(authUrl, 'SpotifyAuth', 'width=600,height=800');
-
-      // Check if the popup was blocked
-      if (!popup || popup.closed || typeof popup.closed == 'undefined') {
-        alert("Popup blocked! Please enable popups and try again.");
-      }
+      window.open(authUrl, '_blank');  // Open in the user's default browser
     }
 
-    // Check if there's an access token in the window message
-      function authenticateSpotify() {
-        console.log("Redirecting to Spotify for authentication...");
-
-        // Open the OAuth authentication URL in a new tab/window (external browser)
-        window.open(authUrl, '_blank');  // This will open in the user's default browser
-      }
-
-    // Show button after a delay or interaction to ensure the popup is not blocked
-    setTimeout(() => {
-      document.getElementById('loginButton').style.display = 'block';  // Show the button after 2 seconds
-    }, 2000);
-
-    // Trigger OAuth flow when the user clicks the button
+    // Show the token input field after the user clicks "Login with Spotify"
     document.getElementById('loginButton').addEventListener('click', () => {
       authenticateSpotify();
+      document.getElementById('tokenSection').style.display = 'block';  // Show the token input field
     });
 
-    // Listen for messages from backend (code.js)
+    // Handle the manually entered access token
+    document.getElementById('submitTokenButton').addEventListener('click', () => {
+      const accessToken = document.getElementById('accessTokenInput').value.trim();
+      if (accessToken) {
+        console.log("Access token submitted:", accessToken);
+        // Send the access token to the Figma plugin backend (code.js)
+        parent.postMessage({ pluginMessage: { type: 'access-token', token: accessToken } }, '*');
+        // Show the playlist section after submitting the token
+        document.getElementById('playlistSection').style.display = 'block';
+      } else {
+        alert("Please enter a valid access token.");
+      }
+    });
+
+    // Listen for messages from the Figma backend (code.js)
     window.onmessage = (event) => {
       const pluginMessage = event.data.pluginMessage;
-      console.log("Message received from backend:", pluginMessage);
 
+      // Check if playlists have been sent
       if (pluginMessage.type === 'display-playlists') {
+        console.log("Playlists received from the backend:", pluginMessage.playlists);
         const playlists = pluginMessage.playlists;
         const playlistSelect = document.getElementById('playlist');
         playlistSelect.innerHTML = '';  // Clear existing options
 
+        // Populate the dropdown with received playlists
         playlists.forEach(playlist => {
           const option = document.createElement('option');
-          option.value = playlist.uri;
-          option.textContent = playlist.name;
+          option.value = playlist.uri;  // Use the playlist URI as the value
+          option.textContent = playlist.name;  // Display the playlist name
           playlistSelect.appendChild(option);
         });
-      }
 
-      if (pluginMessage.type === 'update-counter') {
-        const { minutes, seconds, sessionType } = pluginMessage;
-        const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        document.getElementById('counter').textContent = `${sessionType} Time Left: ${formattedTime}`;
+        // Show the timer section after playlists are loaded
+        document.getElementById('timerSection').style.display = 'block';
       }
     };
+
+    // Start button listener (for starting the Pomodoro)
+    document.getElementById('startButton').addEventListener('click', () => {
+      const workDuration = document.getElementById('workDuration').value;
+      const breakDuration = document.getElementById('breakDuration').value;
+      const selectedPlaylist = document.getElementById('playlist').value;
+
+      if (selectedPlaylist === "") {
+        alert("Please select a playlist.");
+        return;
+      }
+
+      // Send the Pomodoro start details to the backend (code.js)
+      parent.postMessage({
+        pluginMessage: {
+          type: 'start-timer',
+          workDuration: workDuration,
+          breakDuration: breakDuration,
+          playlist: selectedPlaylist
+        }
+      }, '*');
+    });
   </script>
 </body>
+
 </html>

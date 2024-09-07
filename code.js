@@ -1,6 +1,6 @@
 console.log("Figma plugin has started.");
 
-let accessToken; // Store the Spotify access token globally
+let accessToken;  // Store the access token globally
 
 // Display the UI
 figma.showUI(__html__, { width: 400, height: 300 });
@@ -10,18 +10,45 @@ figma.ui.onmessage = (msg) => {
   console.log("Message received from UI:", msg);
 
   if (msg.type === 'access-token') {
-    console.log("Access token received:", msg.token);
-    accessToken = msg.token; // Store the access token for Spotify API requests
-    displayPlaylists(); // Fetch and display playlists after getting the token
+    console.log("Access token received from UI:", msg.token);
+    accessToken = msg.token;  // Store the access token for Spotify API requests
+    displayPlaylists();  // Fetch and display Spotify playlists
   } else if (msg.type === 'start-timer') {
     startPomodoro(msg.workDuration, msg.breakDuration, msg.playlist);
-  } else if (msg.type === 'stop-timer') {
-    stopPomodoro();
   }
 };
 
-// Fetch user playlists from Spotify API
+// Fetch and display Spotify playlists
+async function displayPlaylists() {
+  console.log("Fetching playlists using the access token...");
+
+  if (!accessToken) {
+    console.error("Access token is not available. Cannot fetch playlists.");
+    figma.notify("Please authenticate with Spotify first.");
+    return;
+  }
+
+  try {
+    const playlists = await fetchUserPlaylists();
+    
+    if (playlists && playlists.length > 0) {
+      console.log("Successfully fetched playlists:", playlists);
+      figma.ui.postMessage({ type: 'display-playlists', playlists });
+      console.log("Playlists sent to the UI.");
+    } else {
+      console.log("No playlists found or failed to fetch playlists.");
+      figma.notify("No playlists found or failed to fetch playlists.");
+    }
+  } catch (error) {
+    console.error("Error occurred while displaying playlists:", error);
+    figma.notify("Error fetching playlists. Check the console for details.");
+  }
+}
+
+// Fetch the user's playlists from Spotify
 async function fetchUserPlaylists() {
+  console.log("Making API request to Spotify to fetch user playlists...");
+
   try {
     const response = await fetch('https://api.spotify.com/v1/me/playlists', {
       method: 'GET',
@@ -32,160 +59,114 @@ async function fetchUserPlaylists() {
 
     if (response.ok) {
       const data = await response.json();
-      return data.items; // Return the array of playlists
+      return data.items;
     } else {
       const errorData = await response.json();
-      console.error('Error fetching playlists:', errorData);
-      figma.notify('Failed to fetch playlists.');
+      console.error('Error response received from Spotify:', errorData);
+      figma.notify('Failed to fetch playlists from Spotify.');
       return [];
     }
   } catch (error) {
-    console.error('Network or API error:', error);
-    figma.notify('Failed to fetch playlists. Check console for details.');
+    console.error('Network or API error while fetching playlists:', error);
+    figma.notify('Failed to fetch playlists. Check the console for details.');
     return [];
   }
 }
 
-// Function to display playlists in the UI
-async function displayPlaylists() {
+// Function to start the Pomodoro timer
+function startPomodoro(workDuration, breakDuration, playlistUri) {
+  console.log(`Starting Pomodoro: Work duration: ${workDuration}, Break duration: ${breakDuration}, Playlist: ${playlistUri}`);
+  
+  const workDurationMs = workDuration * 60 * 1000;
+  const breakDurationMs = breakDuration * 60 * 1000;
+
+  figma.notify(`Work session started! Duration: ${workDuration} minutes`);
+  
+  setTimeout(() => {
+    figma.notify('Work session complete! Time for a break.');
+    playSpotifyPlaylist(playlistUri);  // Play the Spotify playlist during the break
+
+    setTimeout(() => {
+      figma.notify('Break is over! Time to get back to work.');
+    }, breakDurationMs);
+
+  }, workDurationMs);
+
+  console.log("Pomodoro timer simulation started.");
+}
+
+// Check if there is an active Spotify device
+async function checkSpotifyDevice() {
+  try {
+    const response = await fetch('https://api.spotify.com/v1/me/player/devices', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const devices = data.devices;
+      if (devices.length > 0) {
+        console.log("Active Spotify devices found:", devices);
+        return devices[0].id;  // Return the first active device
+      } else {
+        console.error("No active Spotify devices found.");
+        figma.notify("No active Spotify device found. Please open Spotify.");
+        return null;
+      }
+    } else {
+      console.error('Failed to retrieve active devices from Spotify.');
+      return null;
+    }
+  } catch (error) {
+    console.error('Error occurred while checking for active Spotify devices:', error);
+    return null;
+  }
+}
+
+// Function to play Spotify playlist
+async function playSpotifyPlaylist(playlistUri) {
+  console.log("Attempting to play playlist:", playlistUri);
+
   if (!accessToken) {
-    console.log('No access token available, cannot fetch playlists.');
+    console.error("Access token is not available. Cannot play Spotify playlist.");
+    figma.notify("Please authenticate with Spotify first.");
     return;
   }
-  
-  const playlists = await fetchUserPlaylists();
-  if (playlists.length > 0) {
-    // Send playlists to the UI to display
-    figma.ui.postMessage({
-      type: 'display-playlists',
-      playlists: playlists
-    });
-  } else {
-    figma.notify('No playlists available.');
+
+  // Check if there is an active Spotify device
+  const deviceId = await checkSpotifyDevice();
+  if (!deviceId) {
+    console.error("No active Spotify device found. Cannot play playlist.");
+    return;
   }
-}
 
-// Timer and countdown logic
-let workTimer;
-let breakTimer;
-let countdownInterval;
-
-// Start the Pomodoro timer
-function startPomodoro(workDuration, breakDuration, playlistUri) {
-  let workTime = workDuration * 60 * 1000;
-
-  // Start the countdown for the work session
-  startCountdown(workDuration * 60, 'Work');
-
-  // Play the selected playlist via Spotify API
-  playSpotifyPlaylist(playlistUri);
-
-  // Set a timer for the work session
-  workTimer = setTimeout(() => {
-    figma.notify("Time for a break!");
-    
-    // Stop Spotify playback when the work session ends
-    stopSpotifyPlayback();
-    
-    startBreak(breakDuration);
-  }, workTime);
-}
-
-// Start the break session
-function startBreak(breakDuration) {
-  let breakTime = breakDuration * 60 * 1000;
-
-  // Start the countdown for the break session
-  startCountdown(breakDuration * 60, 'Break');
-
-  breakTimer = setTimeout(() => {
-    figma.notify("Break over, back to work!");
-    startPomodoro(workDuration, breakDuration);  // Restart the Pomodoro cycle
-  }, breakTime);
-}
-
-// Stop the Pomodoro timer
-function stopPomodoro() {
-  clearTimeout(workTimer); // Stop the work timer
-  clearTimeout(breakTimer); // Stop the break timer
-  clearInterval(countdownInterval); // Stop the countdown interval
-  stopSpotifyPlayback(); // Stop Spotify playback
-  figma.notify("Pomodoro stopped.");
-}
-
-// Function to play a Spotify playlist
-async function playSpotifyPlaylist(playlistUri) {
   try {
-    const response = await fetch(`https://api.spotify.com/v1/me/player/play`, {
+    const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        "context_uri": playlistUri,
-        "offset": { "position": 0 },
-        "position_ms": 0
+        context_uri: playlistUri,  // Spotify playlist URI
+        offset: { position: 0 },   // Start at the first track
+        position_ms: 0             // Start from the beginning of the track
       })
     });
 
     if (response.ok) {
-      console.log('Spotify playlist started!');
+      console.log("Spotify playlist started playing successfully.");
+      figma.notify("Playlist started playing on your device.");
     } else {
-      console.error('Error starting Spotify playlist:', response);
+      const errorData = await response.json();
+      console.error('Error playing Spotify playlist:', errorData);
+      figma.notify('Failed to play playlist. Ensure Spotify is open and active.');
     }
   } catch (error) {
-    console.error('Error playing Spotify playlist:', error);
+    console.error('Error occurred while trying to play the playlist:', error);
+    figma.notify('Failed to play playlist. Check the console for details.');
   }
-}
-
-// Function to stop Spotify playback
-async function stopSpotifyPlayback() {
-  try {
-    const response = await fetch(`https://api.spotify.com/v1/me/player/pause`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (response.ok) {
-      console.log('Spotify playback stopped!');
-    } else {
-      console.error('Error stopping Spotify playback:', response);
-    }
-  } catch (error) {
-    console.error('Error stopping Spotify playback:', error);
-  }
-}
-
-// Countdown logic for the timer
-function startCountdown(durationInSeconds, sessionType) {
-  let timeRemaining = durationInSeconds;
-
-  // Clear any existing countdown
-  clearInterval(countdownInterval);
-
-  // Start a new countdown
-  countdownInterval = setInterval(() => {
-    const minutes = Math.floor(timeRemaining / 60);
-    const seconds = timeRemaining % 60;
-
-    // Send the updated time to the UI
-    figma.ui.postMessage({
-      type: 'update-counter',
-      minutes: minutes,
-      seconds: seconds,
-      sessionType: sessionType
-    });
-
-    // Decrease the time remaining
-    timeRemaining--;
-
-    // Clear the countdown when the timer reaches zero
-    if (timeRemaining < 0) {
-      clearInterval(countdownInterval);
-    }
-  }, 1000); // Update every second
 }
