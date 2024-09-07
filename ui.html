@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Spotify Pomodoro</title>
+</head>
+<body>
+  <h2>Spotify Pomodoro Timer</h2>
+
+  <!-- Playlist selection -->
+  <label for="playlist">Select Playlist:</label>
+  <select id="playlist">
+    <option value="">Loading...</option>
+  </select>
+
+  <!-- Pomodoro Timer settings -->
+  <label for="workDuration">Work Duration (minutes):</label>
+  <input type="number" id="workDuration" value="25" min="5" max="60">
+
+  <label for="breakDuration">Break Duration (minutes):</label>
+  <input type="number" id="breakDuration" value="5" min="1" max="15">
+
+  <button id="startButton">Start Pomodoro</button>
+  <button id="stopButton">Stop Pomodoro</button>
+
+  <!-- Counter display -->
+  <h3 id="counter">Time Left: --:--</h3>
+
+  <script>
+    const clientId = '7e64237adb114c82963ae879017c050f'; // Replace with your Spotify Client ID
+    const redirectUri = 'https://localhost:3000/callback';   // This should be the URL to `oauth-redirect.html`
+
+    // Spotify Auth URL
+    const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=user-read-private user-read-email user-library-read user-read-playback-state user-modify-playback-state`;
+
+    // Open Spotify authentication in a new window
+    function authenticateSpotify() {
+      console.log("Redirecting to Spotify for authentication...");
+      window.open(authUrl, 'SpotifyAuth', 'width=600,height=800');
+    }
+
+    // Check if there's an access token in the window message
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'access-token') {
+        const accessToken = event.data.token;
+        console.log('Access Token received:', accessToken);
+
+        // Pass the access token to the Figma plugin backend (code.js)
+        parent.postMessage({ pluginMessage: { type: 'access-token', token: accessToken } }, '*');
+      }
+    });
+
+    // Automatically start the authentication flow when the UI loads
+    window.onload = function () {
+      authenticateSpotify();
+    };
+
+    // Listen for messages from backend (code.js)
+    window.onmessage = (event) => {
+      const pluginMessage = event.data.pluginMessage;
+      console.log("Message received from backend:", pluginMessage);
+
+      if (pluginMessage.type === 'display-playlists') {
+        const playlists = pluginMessage.playlists;
+        const playlistSelect = document.getElementById('playlist');
+        playlistSelect.innerHTML = '';  // Clear existing options
+
+        playlists.forEach(playlist => {
+          const option = document.createElement('option');
+          option.value = playlist.uri;
+          option.textContent = playlist.name;
+          playlistSelect.appendChild(option);
+        });
+      }
+
+      if (pluginMessage.type === 'update-counter') {
+        const { minutes, seconds, sessionType } = pluginMessage;
+        const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        document.getElementById('counter').textContent = `${sessionType} Time Left: ${formattedTime}`;
+      }
+    };
+  </script>
+</body>
+</html>

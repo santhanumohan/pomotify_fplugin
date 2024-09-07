@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spotify OAuth Redirect</title>
+</head>
+<body>
+  <h3>Redirecting...</h3>
+
+  <script>
+    // Extract access token from URL after Spotify OAuth redirects back
+    function getAccessTokenFromUrl() {
+      const hash = window.location.hash;
+      if (!hash) return null;
+      const params = new URLSearchParams(hash.substring(1)); // Remove leading `#`
+      return params.get('access_token');
+    }
+
+    const accessToken = getAccessTokenFromUrl();
+    if (accessToken) {
+      console.log('Access token:', accessToken);
+
+      // Send access token back to the Figma plugin
+      window.opener.postMessage({ type: 'access-token', token: accessToken }, '*');
+
+      // Close the popup after sending the token
+      window.close();
+    } else {
+      console.error('No access token found');
+      document.body.innerHTML = "<h3>Error: No access token found</h3>";
+    }
+  </script>
+</body>
+</html>
